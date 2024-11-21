@@ -1,6 +1,5 @@
 import grpc
 import os
-import zlib
 from fileupload_pb2 import UploadRequest, FileRequest
 from fileupload_pb2_grpc import FileUploadServiceStub
 
@@ -20,9 +19,8 @@ def upload_file(file_path):
         file_name = os.path.basename(file_path)
         with open(file_path, "rb") as file:
             chunk_index = 0
-            while chunk := file.read(1024 * 1024 * 30):  # 100 MB chunk size
-                compressed_chunk = zlib.compress(chunk)  # Compress the chunk
-                yield UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=compressed_chunk)
+            while chunk := file.read(1024 * 1024 * 30):  # 30 MB chunk size
+                yield UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=chunk)
                 chunk_index += 1
 
     try:
@@ -49,7 +47,7 @@ def get_received_chunks(file_name):
 
 if __name__ == "__main__":
     # Example file to upload
-    file_path = "D:\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
+    file_path = "D:\\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
     file_name = os.path.basename(file_path)
 
     # Upload the file
@@ -57,8 +55,6 @@ if __name__ == "__main__":
         upload_file(file_path)
     else:
         print(f"File not found: {file_path}")
-
-    # Fetch the file's public URL
 
     # Get received chunks for error recovery
     get_received_chunks(file_name)

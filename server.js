@@ -4,7 +4,6 @@ import express from "express";
 import fs from "fs/promises"; // Use asynchronous fs module
 import path from "path";
 import cors from "cors";
-import zlib from "zlib"; // Compression library
 import promClient from "prom-client"; // Monitoring library
 
 // Configuration
@@ -74,9 +73,8 @@ const uploadFile = async (call, callback) => {
       );
 
       try {
-        // Decompress and write asynchronously
-        const decompressedData = zlib.gunzipSync(data.content);
-        await fs.writeFile(tempFilePath, decompressedData, { flag: "w" });
+        // Directly write the data asynchronously
+        await fs.writeFile(tempFilePath, data.content, { flag: "w" });
         totalChunksReceived.inc(); // Increment metric
 
         const duration = (Date.now() - start) / 1000; // Calculate upload duration
