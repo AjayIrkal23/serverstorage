@@ -1,63 +1,50 @@
 import grpc
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor
+import zlib
 from fileupload_pb2 import UploadRequest, FileRequest
 from fileupload_pb2_grpc import FileUploadServiceStub
 
-# gRPC server address (replace with your server address)
-SERVER_ADDRESS = "20.241.73.140:8001"
+# gRPC server address
+SERVER_ADDRESS = "34.30.180.154:8001"
 
-def upload_chunk(client, file_name, chunk_index, chunk_data):
-    """Upload a single chunk to the server."""
-    try:
-        response = client.UploadFile(iter([
-            UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=chunk_data)
-        ]))
-        print(f"Chunk {chunk_index} uploaded: {response.message}")
-    except grpc.RpcError as e:
-        print(f"Failed to upload chunk {chunk_index}: {e.code()} - {e.details()}")
-
-def upload_file(file_path, chunk_size=1024 * 1024 * 50, max_workers=4):
-    """Upload a file to the gRPC server in parallel chunks."""
-    # Establish a gRPC channel
+def upload_file(file_path):
+    """Upload a file to the gRPC server."""
+    # Establish a gRPC channel with extended message limits
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        
+        options=[
+            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
+        ]
     )
     client = FileUploadServiceStub(channel)
 
-    file_name = os.path.basename(file_path)
-    file_size = os.path.getsize(file_path)
-    print(f"Uploading file: {file_name} (Size: {file_size} bytes)")
+    def file_chunks():
+        """Generator to stream file chunks."""
+        file_name = os.path.basename(file_path)
+        with open(file_path, "rb") as file:
+            chunk_index = 0
+            while chunk := file.read(1024 * 1024 * 100):  # 100 MB chunk size
+                compressed_chunk = zlib.compress(chunk)  # Compress the chunk
+                yield UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=compressed_chunk)
+                chunk_index += 1
 
-    # Split file into chunks and upload in parallel
-    chunk_index = 0
-    chunks = []
-
-    with open(file_path, "rb") as file:
-        while chunk := file.read(chunk_size):
-            chunks.append((chunk_index, chunk))
-            chunk_index += 1
-
-    # Upload chunks in parallel using ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        for index, chunk in chunks:
-            executor.submit(upload_chunk, client, file_name, index, chunk)
-
-    # Merge chunks on the server
     try:
-        response = client.MergeChunks(FileRequest(fileName=file_name))
-        print(f"File assembled: {response.message}")
+        # Send the file chunks to the server
+        response = client.UploadFile(file_chunks())
+        print(f"Upload response: {response.message}")
     except grpc.RpcError as e:
-        print(f"gRPC error during merge: {e.code()} - {e.details()}")
+        print(f"gRPC error during upload: {e.details()}")
 
 def get_file_url(file_name):
     """Get the public URL for a file from the gRPC server."""
-    # Establish a gRPC channel
+    # Establish a gRPC channel with extended message limits
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        
+        options=[
+            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
+        ]
     )
     client = FileUploadServiceStub(channel)
 
@@ -66,11 +53,30 @@ def get_file_url(file_name):
         response = client.GetFileURL(FileRequest(fileName=file_name))
         print(f"File URL: {response.fileUrl}")
     except grpc.RpcError as e:
-        print(f"gRPC error during URL fetch: {e.code()} - {e.details()}")
+        print(f"gRPC error during URL fetch: {e.details()}")
+
+def get_received_chunks(file_name):
+    """Fetch the list of received chunks from the server."""
+    # Establish a gRPC channel
+    channel = grpc.insecure_channel(
+        SERVER_ADDRESS,
+        options=[
+            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
+        ]
+    )
+    client = FileUploadServiceStub(channel)
+
+    try:
+        # Request the received chunks from the server
+        response = client.GetReceivedChunks(FileRequest(fileName=file_name))
+        print(f"Received chunks for {file_name}: {response.receivedChunks}")
+    except grpc.RpcError as e:
+        print(f"gRPC error during chunk tracking: {e.details()}")
 
 if __name__ == "__main__":
     # Example file to upload
-    file_path = r"D:\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
+    file_path = "C:/Users/pavan/New folder/uploads/Excel_Input.xlsx"  # Replace with your file path
     file_name = os.path.basename(file_path)
 
     # Upload the file
@@ -81,3 +87,6 @@ if __name__ == "__main__":
 
     # Fetch the file's public URL
     get_file_url(file_name)
+
+    # Get received chunks for error recovery
+    get_received_chunks(file_name)

@@ -1,9 +1,11 @@
 import grpc from "@grpc/grpc-js";
 import protoLoader from "@grpc/proto-loader";
 import express from "express";
-import fs from "fs";
+import fs from "fs/promises"; // Use asynchronous fs module
 import path from "path";
-import cors from "cors"; // For HTTP server CORS support
+import cors from "cors";
+import zlib from "zlib"; // Compression library
+import promClient from "prom-client"; // Monitoring library
 
 // Configuration
 const PROTO_PATH = "./fileupload.proto";
@@ -13,12 +15,8 @@ const GRPC_PORT = "0.0.0.0:8001";
 const HTTP_PORT = 8000;
 
 // Ensure directories exist
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-if (!fs.existsSync(TEMP_DIR)) {
-  fs.mkdirSync(TEMP_DIR, { recursive: true });
-}
+await fs.mkdir(UPLOAD_DIR, { recursive: true });
+await fs.mkdir(TEMP_DIR, { recursive: true });
 
 // Load the protobuf file
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
@@ -31,54 +29,84 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const fileUploadProto =
   grpc.loadPackageDefinition(packageDefinition).fileupload;
 
+// Metrics for monitoring
+const uploadDuration = new promClient.Histogram({
+  name: "upload_duration_seconds",
+  help: "Time taken to process file uploads",
+  buckets: [0.1, 1, 5, 10, 30, 60, 300, 600] // Buckets in seconds
+});
+
+const totalChunksReceived = new promClient.Counter({
+  name: "chunks_received_total",
+  help: "Total number of chunks received"
+});
+
+const mergeDuration = new promClient.Histogram({
+  name: "merge_duration_seconds",
+  help: "Time taken to merge chunks",
+  buckets: [1, 5, 10, 30, 60, 300]
+});
+
+// Error Recovery Metadata
+const chunkTracker = new Map(); // Tracks received chunks for each file
+
 // gRPC Service Implementation
-const uploadFile = (call, callback) => {
+const uploadFile = async (call, callback) => {
   let fileName = "";
   let chunkIndex = -1;
-  let writeStream;
 
-  call.on("data", (data) => {
+  call.on("data", async (data) => {
+    const start = Date.now();
+
     if (data.fileName && data.chunkIndex !== undefined) {
       fileName = data.fileName;
       chunkIndex = data.chunkIndex;
+
+      // Track received chunks
+      if (!chunkTracker.has(fileName)) {
+        chunkTracker.set(fileName, new Set());
+      }
+      chunkTracker.get(fileName).add(chunkIndex);
 
       const tempFilePath = path.join(
         TEMP_DIR,
         `${fileName}-chunk-${chunkIndex}`
       );
-      writeStream = fs.createWriteStream(tempFilePath);
 
-      if (data.content && writeStream) {
-        writeStream.write(data.content);
+      try {
+        // Decompress and write asynchronously
+        const decompressedData = zlib.gunzipSync(data.content);
+        await fs.writeFile(tempFilePath, decompressedData, { flag: "w" });
+        totalChunksReceived.inc(); // Increment metric
+
+        const duration = (Date.now() - start) / 1000; // Calculate upload duration
+        uploadDuration.observe(duration); // Record metric
+      } catch (err) {
+        console.error(`Error writing chunk ${chunkIndex}:`, err);
       }
     }
   });
 
   call.on("end", () => {
-    if (writeStream) {
-      writeStream.end(() => {
-        console.log(`Chunk received: ${fileName} - chunk ${chunkIndex}`);
-        callback(null, { message: "Chunk uploaded successfully!" });
-      });
-    }
+    console.log(`All chunks received for ${fileName}`);
+    callback(null, { message: "Chunks uploaded successfully!" });
   });
 
   call.on("error", (err) => {
     console.error("Error during chunk upload:", err);
-    if (writeStream) writeStream.destroy();
     callback(err);
   });
 };
 
-const mergeChunks = (call, callback) => {
+// Parallel Merging of Chunks
+const mergeChunks = async (call, callback) => {
   const { fileName } = call.request;
-
-  const tempDir = TEMP_DIR;
   const finalFilePath = path.join(UPLOAD_DIR, fileName);
 
   try {
-    const chunkFiles = fs
-      .readdirSync(tempDir)
+    const start = Date.now();
+
+    const chunkFiles = (await fs.readdir(TEMP_DIR))
       .filter((file) => file.startsWith(fileName))
       .sort((a, b) => {
         const indexA = parseInt(a.split("-chunk-")[1], 10);
@@ -86,18 +114,24 @@ const mergeChunks = (call, callback) => {
         return indexA - indexB;
       });
 
-    const writeStream = fs.createWriteStream(finalFilePath);
-    chunkFiles.forEach((chunkFile) => {
-      const chunkPath = path.join(tempDir, chunkFile);
-      const data = fs.readFileSync(chunkPath);
-      writeStream.write(data);
-      fs.unlinkSync(chunkPath); // Remove chunk after writing
-    });
+    const writeStream = await fs.open(finalFilePath, "w");
 
-    writeStream.end(() => {
-      console.log(`File assembled: ${finalFilePath}`);
-      callback(null, { message: "File assembled successfully!" });
-    });
+    // Process chunks concurrently
+    await Promise.all(
+      chunkFiles.map(async (chunkFile) => {
+        const chunkPath = path.join(TEMP_DIR, chunkFile);
+        const data = await fs.readFile(chunkPath);
+        await writeStream.write(data);
+        await fs.unlink(chunkPath); // Remove chunk after writing
+      })
+    );
+
+    await writeStream.close();
+
+    const duration = (Date.now() - start) / 1000; // Calculate merge duration
+    mergeDuration.observe(duration); // Record metric
+    console.log(`File assembled: ${finalFilePath}`);
+    callback(null, { message: "File assembled successfully!" });
   } catch (err) {
     console.error("Error during file assembly:", err);
     callback({
@@ -107,33 +141,29 @@ const mergeChunks = (call, callback) => {
   }
 };
 
-const getFileURL = (call, callback) => {
+// Error Recovery: Check received chunks
+const getReceivedChunks = (call, callback) => {
   const { fileName } = call.request;
-  const filePath = path.join(UPLOAD_DIR, fileName);
 
-  fs.access(filePath, fs.constants.F_OK, (err) => {
-    if (err) {
-      console.error(`File not found: ${filePath}`);
-      return callback({
-        code: grpc.status.NOT_FOUND,
-        message: "File not found"
-      });
-    }
-    const fileUrl = `http://localhost:${HTTP_PORT}/uploads/${fileName}`;
-    callback(null, { fileUrl });
-  });
+  if (chunkTracker.has(fileName)) {
+    const receivedChunks = Array.from(chunkTracker.get(fileName));
+    callback(null, { receivedChunks });
+  } else {
+    callback({ code: grpc.status.NOT_FOUND, message: "No chunks found" });
+  }
 };
 
-// Start gRPC Server with 20GB Support
+// Start gRPC Server with Optimized Settings
 const grpcServer = new grpc.Server({
   "grpc.max_receive_message_length": 20 * 1024 * 1024 * 1024, // 20 GB
-  "grpc.max_send_message_length": 20 * 1024 * 1024 * 1024 // 20 GB
+  "grpc.max_send_message_length": 20 * 1024 * 1024 * 1024, // 20 GB
+  "grpc.max_concurrent_streams": 2048 // Increase concurrent stream limits
 });
 
 grpcServer.addService(fileUploadProto.FileUploadService.service, {
   uploadFile,
   mergeChunks,
-  getFileURL
+  getReceivedChunks
 });
 
 grpcServer.bindAsync(
@@ -154,6 +184,12 @@ const app = express();
 app.use(cors()); // Enable CORS for HTTP requests
 app.use(express.static(UPLOAD_DIR)); // Serve static files
 app.use(express.json({ limit: "20gb" })); // For parsing JSON request bodies, with a 20GB limit
+
+// Expose Prometheus Metrics
+app.get("/metrics", async (req, res) => {
+  res.set("Content-Type", promClient.register.contentType);
+  res.send(await promClient.register.metrics());
+});
 
 // Serve uploaded files
 app.use("/uploads", express.static(UPLOAD_DIR));

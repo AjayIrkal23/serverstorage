@@ -2,26 +2,38 @@ syntax = "proto3";
 
 package fileupload;
 
+// File upload service definition
 service FileUploadService {
+  // Stream RPC for uploading chunks
   rpc UploadFile(stream UploadRequest) returns (UploadResponse);
-  rpc GetFileURL(FileRequest) returns (FileURLResponse);
+  
+  // RPC to merge chunks into a complete file
   rpc MergeChunks(FileRequest) returns (UploadResponse);
+  
+  // RPC to get a list of received chunks for error recovery
+  rpc GetReceivedChunks(FileRequest) returns (ChunkListResponse);
 }
 
+// Message for uploading a file chunk
 message UploadRequest {
-  string fileName = 1;
-  int32 chunkIndex = 2;
-  bytes content = 3;
+  string fileName = 1;    // Name of the file being uploaded
+  int32 chunkIndex = 2;   // Index of the chunk
+  bytes content = 3;      // Content of the chunk (can be compressed)
 }
 
+// Response message for file upload operations
 message UploadResponse {
-  string message = 1;
+  string message = 1;     // Status or success message
 }
 
+// Request message for file-related operations
 message FileRequest {
-  string fileName = 1;
+  string fileName = 1;    // Name of the file
 }
 
-message FileURLResponse {
-  string fileUrl = 1;
+
+// Response message for listing received chunks
+message ChunkListResponse {
+  string fileName = 1;    // Name of the file
+  repeated int32 receivedChunks = 2; // List of received chunk indices
 }
