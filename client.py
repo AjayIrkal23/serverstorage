@@ -5,17 +5,13 @@ from fileupload_pb2 import UploadRequest, FileRequest
 from fileupload_pb2_grpc import FileUploadServiceStub
 
 # gRPC server address
-SERVER_ADDRESS = "34.30.180.154:8001"
+SERVER_ADDRESS = "20.241.73.140:8001"
 
 def upload_file(file_path):
     """Upload a file to the gRPC server."""
     # Establish a gRPC channel with extended message limits
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        options=[
-            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
-        ]
     )
     client = FileUploadServiceStub(channel)
 
@@ -36,34 +32,11 @@ def upload_file(file_path):
     except grpc.RpcError as e:
         print(f"gRPC error during upload: {e.details()}")
 
-def get_file_url(file_name):
-    """Get the public URL for a file from the gRPC server."""
-    # Establish a gRPC channel with extended message limits
-    channel = grpc.insecure_channel(
-        SERVER_ADDRESS,
-        options=[
-            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
-        ]
-    )
-    client = FileUploadServiceStub(channel)
-
-    try:
-        # Request the file URL from the server
-        response = client.GetFileURL(FileRequest(fileName=file_name))
-        print(f"File URL: {response.fileUrl}")
-    except grpc.RpcError as e:
-        print(f"gRPC error during URL fetch: {e.details()}")
-
 def get_received_chunks(file_name):
     """Fetch the list of received chunks from the server."""
     # Establish a gRPC channel
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        options=[
-            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024)  # 20 GB
-        ]
     )
     client = FileUploadServiceStub(channel)
 
@@ -76,7 +49,7 @@ def get_received_chunks(file_name):
 
 if __name__ == "__main__":
     # Example file to upload
-    file_path = "C:/Users/pavan/New folder/uploads/Excel_Input.xlsx"  # Replace with your file path
+    file_path = "D:\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
     file_name = os.path.basename(file_path)
 
     # Upload the file
@@ -86,7 +59,6 @@ if __name__ == "__main__":
         print(f"File not found: {file_path}")
 
     # Fetch the file's public URL
-    get_file_url(file_name)
 
     # Get received chunks for error recovery
     get_received_chunks(file_name)
