@@ -22,7 +22,7 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   longs: String,
   enums: String,
   defaults: true,
-  oneofs: true,
+  oneofs: true
 });
 const fileUploadProto =
   grpc.loadPackageDefinition(packageDefinition).fileupload;
@@ -68,7 +68,7 @@ const getFileURL = (call, callback) => {
       console.error(`File not found: ${filePath}`);
       return callback({
         code: grpc.status.NOT_FOUND,
-        message: "File not found",
+        message: "File not found"
       });
     }
     const fileUrl = `http://localhost:${HTTP_PORT}/uploads/${fileName}`;
@@ -76,12 +76,17 @@ const getFileURL = (call, callback) => {
   });
 };
 
-// Start gRPC Server
-const grpcServer = new grpc.Server();
+// Start gRPC Server with 20GB Support
+const grpcServer = new grpc.Server({
+  "grpc.max_receive_message_length": 20 * 1024 * 1024 * 1024, // 20 GB
+  "grpc.max_send_message_length": 20 * 1024 * 1024 * 1024 // 20 GB
+});
+
 grpcServer.addService(fileUploadProto.FileUploadService.service, {
   uploadFile,
-  getFileURL,
+  getFileURL
 });
+
 grpcServer.bindAsync(
   GRPC_PORT,
   grpc.ServerCredentials.createInsecure(),
@@ -99,7 +104,7 @@ grpcServer.bindAsync(
 const app = express();
 app.use(cors()); // Enable CORS for HTTP requests
 app.use(express.static(UPLOAD_DIR)); // Serve static files
-app.use(express.json()); // For parsing JSON request bodies
+app.use(express.json({ limit: "20gb" })); // For parsing JSON request bodies, with a 20GB limit
 
 // Serve uploaded files
 app.use("/uploads", express.static(UPLOAD_DIR));

@@ -8,28 +8,47 @@ SERVER_ADDRESS = "34.30.180.154:8001"
 
 def upload_file(file_path):
     """Upload a file to the gRPC server."""
-    # Establish a gRPC channel
-    channel = grpc.insecure_channel(SERVER_ADDRESS)
+    # Establish a gRPC channel with increased message size limits
+    channel = grpc.insecure_channel(
+        SERVER_ADDRESS,
+        options=[
+            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+        ],
+    )
     client = FileUploadServiceStub(channel)
 
     def file_chunks():
         """Generator to stream file chunks."""
         file_name = os.path.basename(file_path)
+        file_size = os.path.getsize(file_path)
+        print(f"Uploading file: {file_name} (Size: {file_size} bytes)")
+
+        # First chunk includes metadata
+        yield UploadRequest(fileName=file_name, fileSize=file_size)
+
+        # Stream the file in 50 MB chunks
         with open(file_path, "rb") as file:
             while chunk := file.read(1024 * 1024 * 50):  # 50 MB chunk size
-                yield UploadRequest(fileName=file_name, content=chunk)
+                yield UploadRequest(content=chunk)
 
     try:
         # Send the file chunks to the server
         response = client.UploadFile(file_chunks())
         print(f"Upload response: {response.message}")
     except grpc.RpcError as e:
-        print(f"gRPC error during upload: {e.details()}")
+        print(f"gRPC error during upload: {e.code()} - {e.details()}")
 
 def get_file_url(file_name):
     """Get the public URL for a file from the gRPC server."""
-    # Establish a gRPC channel
-    channel = grpc.insecure_channel(SERVER_ADDRESS)
+    # Establish a gRPC channel with increased message size limits
+    channel = grpc.insecure_channel(
+        SERVER_ADDRESS,
+        options=[
+            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
+        ],
+    )
     client = FileUploadServiceStub(channel)
 
     try:
@@ -37,11 +56,11 @@ def get_file_url(file_name):
         response = client.GetFileURL(FileRequest(fileName=file_name))
         print(f"File URL: {response.fileUrl}")
     except grpc.RpcError as e:
-        print(f"gRPC error during URL fetch: {e.details()}")
+        print(f"gRPC error during URL fetch: {e.code()} - {e.details()}")
 
 if __name__ == "__main__":
     # Example file to upload
-    file_path = "D:\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
+    file_path = r"D:\Security_Center_v5.11.3.0_b3130.13_Full.zip"  # Replace with your file path
     file_name = os.path.basename(file_path)
 
     # Upload the file
@@ -51,4 +70,4 @@ if __name__ == "__main__":
         print(f"File not found: {file_path}")
 
     # Fetch the file's public URL
-get_file_url(file_name)
+    get_file_url(file_name)
