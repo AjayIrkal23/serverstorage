@@ -1,0 +1,54 @@
+import grpc
+import os
+from fileupload_pb2 import UploadRequest, FileRequest
+from fileupload_pb2_grpc import FileUploadServiceStub
+
+# gRPC server address (replace with your server address)
+SERVER_ADDRESS = "34.30.180.154:8001"
+
+def upload_file(file_path):
+    """Upload a file to the gRPC server."""
+    # Establish a gRPC channel
+    channel = grpc.insecure_channel(SERVER_ADDRESS)
+    client = FileUploadServiceStub(channel)
+
+    def file_chunks():
+        """Generator to stream file chunks."""
+        file_name = os.path.basename(file_path)
+        with open(file_path, "rb") as file:
+            while chunk := file.read(1024 * 1024 * 100):  # 100 MB chunk size
+                yield UploadRequest(fileName=file_name, content=chunk)
+
+    try:
+        # Send the file chunks to the server
+        response = client.UploadFile(file_chunks())
+        print(f"Upload response: {response.message}")
+    except grpc.RpcError as e:
+        print(f"gRPC error during upload: {e.details()}")
+
+def get_file_url(file_name):
+    """Get the public URL for a file from the gRPC server."""
+    # Establish a gRPC channel
+    channel = grpc.insecure_channel(SERVER_ADDRESS)
+    client = FileUploadServiceStub(channel)
+
+    try:
+        # Request the file URL from the server
+        response = client.GetFileURL(FileRequest(fileName=file_name))
+        print(f"File URL: {response.fileUrl}")
+    except grpc.RpcError as e:
+        print(f"gRPC error during URL fetch: {e.details()}")
+
+if __name__ == "__main__":
+    # Example file to upload
+    file_path = "C:/Users/pavan/New folder/uploads/Excel_Input.xlsx"  # Replace with your file path
+    file_name = os.path.basename(file_path)
+
+    # Upload the file
+    if os.path.exists(file_path):
+        upload_file(file_path)
+    else:
+        print(f"File not found: {file_path}")
+
+    # Fetch the file's public URL
+get_file_url(file_name)
