@@ -24,7 +24,7 @@ def upload_file(file_path):
         file_name = os.path.basename(file_path)
         with open(file_path, "rb") as file:
             chunk_index = 0
-            while chunk := file.read(1024 * 1024 * 100):  # 100 MB chunk size
+            while chunk := file.read(1024 * 1024 * 30):  # 100 MB chunk size
                 compressed_chunk = zlib.compress(chunk)  # Compress the chunk
                 yield UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=compressed_chunk)
                 chunk_index += 1
