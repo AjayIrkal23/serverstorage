@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x66ileupload.proto\x12\nfileupload\"2\n\rUploadRequest\x12\x10\n\x08\x66ileName\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\x0c\"!\n\x0eUploadResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1f\n\x0b\x46ileRequest\x12\x10\n\x08\x66ileName\x18\x01 \x01(\t\"\"\n\x0f\x46ileURLResponse\x12\x0f\n\x07\x66ileUrl\x18\x01 \x01(\t2\x9e\x01\n\x11\x46ileUploadService\x12\x45\n\nUploadFile\x12\x19.fileupload.UploadRequest\x1a\x1a.fileupload.UploadResponse(\x01\x12\x42\n\nGetFileURL\x12\x17.fileupload.FileRequest\x1a\x1b.fileupload.FileURLResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x66ileupload.proto\x12\nfileupload\"F\n\rUploadRequest\x12\x10\n\x08\x66ileName\x18\x01 \x01(\t\x12\x12\n\nchunkIndex\x18\x02 \x01(\x05\x12\x0f\n\x07\x63ontent\x18\x03 \x01(\x0c\"!\n\x0eUploadResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\x1f\n\x0b\x46ileRequest\x12\x10\n\x08\x66ileName\x18\x01 \x01(\t\"\"\n\x0f\x46ileURLResponse\x12\x0f\n\x07\x66ileUrl\x18\x01 \x01(\t2\xe2\x01\n\x11\x46ileUploadService\x12\x45\n\nUploadFile\x12\x19.fileupload.UploadRequest\x1a\x1a.fileupload.UploadResponse(\x01\x12\x42\n\nGetFileURL\x12\x17.fileupload.FileRequest\x1a\x1b.fileupload.FileURLResponse\x12\x42\n\x0bMergeChunks\x12\x17.fileupload.FileRequest\x1a\x1a.fileupload.UploadResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -32,13 +32,13 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'fileupload_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
   _globals['_UPLOADREQUEST']._serialized_start=32
-  _globals['_UPLOADREQUEST']._serialized_end=82
-  _globals['_UPLOADRESPONSE']._serialized_start=84
-  _globals['_UPLOADRESPONSE']._serialized_end=117
-  _globals['_FILEREQUEST']._serialized_start=119
-  _globals['_FILEREQUEST']._serialized_end=150
-  _globals['_FILEURLRESPONSE']._serialized_start=152
-  _globals['_FILEURLRESPONSE']._serialized_end=186
-  _globals['_FILEUPLOADSERVICE']._serialized_start=189
-  _globals['_FILEUPLOADSERVICE']._serialized_end=347
+  _globals['_UPLOADREQUEST']._serialized_end=102
+  _globals['_UPLOADRESPONSE']._serialized_start=104
+  _globals['_UPLOADRESPONSE']._serialized_end=137
+  _globals['_FILEREQUEST']._serialized_start=139
+  _globals['_FILEREQUEST']._serialized_end=170
+  _globals['_FILEURLRESPONSE']._serialized_start=172
+  _globals['_FILEURLRESPONSE']._serialized_end=206
+  _globals['_FILEUPLOADSERVICE']._serialized_start=209
+  _globals['_FILEUPLOADSERVICE']._serialized_end=435
 # @@protoc_insertion_point(module_scope)

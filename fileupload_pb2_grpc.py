@@ -44,6 +44,11 @@ class FileUploadServiceStub(object):
                 request_serializer=fileupload__pb2.FileRequest.SerializeToString,
                 response_deserializer=fileupload__pb2.FileURLResponse.FromString,
                 _registered_method=True)
+        self.MergeChunks = channel.unary_unary(
+                '/fileupload.FileUploadService/MergeChunks',
+                request_serializer=fileupload__pb2.FileRequest.SerializeToString,
+                response_deserializer=fileupload__pb2.UploadResponse.FromString,
+                _registered_method=True)
 
 
 class FileUploadServiceServicer(object):
@@ -61,6 +66,12 @@ class FileUploadServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def MergeChunks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_FileUploadServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +84,11 @@ def add_FileUploadServiceServicer_to_server(servicer, server):
                     servicer.GetFileURL,
                     request_deserializer=fileupload__pb2.FileRequest.FromString,
                     response_serializer=fileupload__pb2.FileURLResponse.SerializeToString,
+            ),
+            'MergeChunks': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeChunks,
+                    request_deserializer=fileupload__pb2.FileRequest.FromString,
+                    response_serializer=fileupload__pb2.UploadResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +145,33 @@ class FileUploadService(object):
             '/fileupload.FileUploadService/GetFileURL',
             fileupload__pb2.FileRequest.SerializeToString,
             fileupload__pb2.FileURLResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeChunks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/fileupload.FileUploadService/MergeChunks',
+            fileupload__pb2.FileRequest.SerializeToString,
+            fileupload__pb2.UploadResponse.FromString,
             options,
             channel_credentials,
             insecure,

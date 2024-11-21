@@ -1,53 +1,63 @@
 import grpc
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 from fileupload_pb2 import UploadRequest, FileRequest
 from fileupload_pb2_grpc import FileUploadServiceStub
 
 # gRPC server address (replace with your server address)
-SERVER_ADDRESS = "34.30.180.154:8001"
+SERVER_ADDRESS = "20.241.73.140:8001"
 
-def upload_file(file_path):
-    """Upload a file to the gRPC server."""
-    # Establish a gRPC channel with increased message size limits
+def upload_chunk(client, file_name, chunk_index, chunk_data):
+    """Upload a single chunk to the server."""
+    try:
+        response = client.UploadFile(iter([
+            UploadRequest(fileName=file_name, chunkIndex=chunk_index, content=chunk_data)
+        ]))
+        print(f"Chunk {chunk_index} uploaded: {response.message}")
+    except grpc.RpcError as e:
+        print(f"Failed to upload chunk {chunk_index}: {e.code()} - {e.details()}")
+
+def upload_file(file_path, chunk_size=1024 * 1024 * 50, max_workers=4):
+    """Upload a file to the gRPC server in parallel chunks."""
+    # Establish a gRPC channel
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        options=[
-            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-        ],
+        
     )
     client = FileUploadServiceStub(channel)
 
-    def file_chunks():
-        """Generator to stream file chunks."""
-        file_name = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path)
-        print(f"Uploading file: {file_name} (Size: {file_size} bytes)")
+    file_name = os.path.basename(file_path)
+    file_size = os.path.getsize(file_path)
+    print(f"Uploading file: {file_name} (Size: {file_size} bytes)")
 
-        # First chunk includes metadata
-        yield UploadRequest(fileName=file_name, fileSize=file_size)
+    # Split file into chunks and upload in parallel
+    chunk_index = 0
+    chunks = []
 
-        # Stream the file in 50 MB chunks
-        with open(file_path, "rb") as file:
-            while chunk := file.read(1024 * 1024 * 50):  # 50 MB chunk size
-                yield UploadRequest(content=chunk)
+    with open(file_path, "rb") as file:
+        while chunk := file.read(chunk_size):
+            chunks.append((chunk_index, chunk))
+            chunk_index += 1
 
+    # Upload chunks in parallel using ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for index, chunk in chunks:
+            executor.submit(upload_chunk, client, file_name, index, chunk)
+
+    # Merge chunks on the server
     try:
-        # Send the file chunks to the server
-        response = client.UploadFile(file_chunks())
-        print(f"Upload response: {response.message}")
+        response = client.MergeChunks(FileRequest(fileName=file_name))
+        print(f"File assembled: {response.message}")
     except grpc.RpcError as e:
-        print(f"gRPC error during upload: {e.code()} - {e.details()}")
+        print(f"gRPC error during merge: {e.code()} - {e.details()}")
 
 def get_file_url(file_name):
     """Get the public URL for a file from the gRPC server."""
-    # Establish a gRPC channel with increased message size limits
+    # Establish a gRPC channel
     channel = grpc.insecure_channel(
         SERVER_ADDRESS,
-        options=[
-            ("grpc.max_send_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-            ("grpc.max_receive_message_length", 20 * 1024 * 1024 * 1024),  # 20 GB
-        ],
+        
     )
     client = FileUploadServiceStub(channel)
 

@@ -8,12 +8,16 @@ import cors from "cors"; // For HTTP server CORS support
 // Configuration
 const PROTO_PATH = "./fileupload.proto";
 const UPLOAD_DIR = path.join(process.cwd(), "uploads");
+const TEMP_DIR = path.join(UPLOAD_DIR, "temp");
 const GRPC_PORT = "0.0.0.0:8001";
 const HTTP_PORT = 8000;
 
-// Ensure uploads directory exists
+// Ensure directories exist
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
 // Load the protobuf file
@@ -30,33 +34,77 @@ const fileUploadProto =
 // gRPC Service Implementation
 const uploadFile = (call, callback) => {
   let fileName = "";
+  let chunkIndex = -1;
   let writeStream;
 
   call.on("data", (data) => {
-    if (data.fileName && !fileName) {
+    if (data.fileName && data.chunkIndex !== undefined) {
       fileName = data.fileName;
-      const filePath = path.join(UPLOAD_DIR, fileName);
-      writeStream = fs.createWriteStream(filePath);
-    }
-    if (data.content && writeStream) {
-      writeStream.write(data.content);
+      chunkIndex = data.chunkIndex;
+
+      const tempFilePath = path.join(
+        TEMP_DIR,
+        `${fileName}-chunk-${chunkIndex}`
+      );
+      writeStream = fs.createWriteStream(tempFilePath);
+
+      if (data.content && writeStream) {
+        writeStream.write(data.content);
+      }
     }
   });
 
   call.on("end", () => {
     if (writeStream) {
       writeStream.end(() => {
-        console.log(`File saved: ${path.join(UPLOAD_DIR, fileName)}`);
-        callback(null, { message: "File uploaded successfully!" });
+        console.log(`Chunk received: ${fileName} - chunk ${chunkIndex}`);
+        callback(null, { message: "Chunk uploaded successfully!" });
       });
     }
   });
 
   call.on("error", (err) => {
-    console.error("Error during file upload:", err);
+    console.error("Error during chunk upload:", err);
     if (writeStream) writeStream.destroy();
     callback(err);
   });
+};
+
+const mergeChunks = (call, callback) => {
+  const { fileName } = call.request;
+
+  const tempDir = TEMP_DIR;
+  const finalFilePath = path.join(UPLOAD_DIR, fileName);
+
+  try {
+    const chunkFiles = fs
+      .readdirSync(tempDir)
+      .filter((file) => file.startsWith(fileName))
+      .sort((a, b) => {
+        const indexA = parseInt(a.split("-chunk-")[1], 10);
+        const indexB = parseInt(b.split("-chunk-")[1], 10);
+        return indexA - indexB;
+      });
+
+    const writeStream = fs.createWriteStream(finalFilePath);
+    chunkFiles.forEach((chunkFile) => {
+      const chunkPath = path.join(tempDir, chunkFile);
+      const data = fs.readFileSync(chunkPath);
+      writeStream.write(data);
+      fs.unlinkSync(chunkPath); // Remove chunk after writing
+    });
+
+    writeStream.end(() => {
+      console.log(`File assembled: ${finalFilePath}`);
+      callback(null, { message: "File assembled successfully!" });
+    });
+  } catch (err) {
+    console.error("Error during file assembly:", err);
+    callback({
+      code: grpc.status.INTERNAL,
+      message: "Error during file assembly"
+    });
+  }
 };
 
 const getFileURL = (call, callback) => {
@@ -84,6 +132,7 @@ const grpcServer = new grpc.Server({
 
 grpcServer.addService(fileUploadProto.FileUploadService.service, {
   uploadFile,
+  mergeChunks,
   getFileURL
 });
 

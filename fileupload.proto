@@ -5,11 +5,13 @@ package fileupload;
 service FileUploadService {
   rpc UploadFile(stream UploadRequest) returns (UploadResponse);
   rpc GetFileURL(FileRequest) returns (FileURLResponse);
+  rpc MergeChunks(FileRequest) returns (UploadResponse);
 }
 
 message UploadRequest {
   string fileName = 1;
-  bytes content = 2;
+  int32 chunkIndex = 2;
+  bytes content = 3;
 }
 
 message UploadResponse {
